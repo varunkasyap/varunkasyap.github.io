@@ -210,3 +210,64 @@ runBtn.addEventListener("click", () => {
       output.textContent = "Network error or API issue.";
     });
 });
+
+// ----- Tech News Logic -----
+
+const newsContainer = document.getElementById('news-container');
+
+async function fetchTechNews() {
+  if (!newsContainer) return;
+
+  try {
+    // Fetch top 6 articles with tag 'tech'
+    // Dev.to API: https://developers.forem.com/api/v1#tag/articles/operation/getArticles
+    const response = await fetch('https://dev.to/api/articles?per_page=6');
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const articles = await response.json();
+    renderNews(articles);
+
+  } catch (error) {
+    console.error('Error fetching news:', error);
+    newsContainer.innerHTML = '<div class="loading-spinner">Failed to load news. Please try again later.</div>';
+  }
+}
+
+function renderNews(articles) {
+  newsContainer.innerHTML = ''; // Clear loading spinner
+
+  articles.forEach(article => {
+    // Dev.to usually provides a social_image or cover_image.
+    const imageUrl = article.cover_image || article.social_image || 'https://placehold.co/600x400/EEE/31343C?text=No+Image';
+    const date = new Date(article.published_at).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+
+    const card = document.createElement('a');
+    card.href = article.url;
+    card.target = "_blank";
+    card.rel = "noopener noreferrer";
+    card.className = 'news-card';
+
+    card.innerHTML = `
+      <img src="${imageUrl}" alt="${article.title}" class="news-img" loading="lazy">
+      <div class="news-content">
+        <h3 class="news-title">${article.title}</h3>
+        <div class="news-meta">
+          <span class="news-author">${article.user.name}</span>
+          <span class="news-date">${date}</span>
+        </div>
+      </div>
+    `;
+
+    newsContainer.appendChild(card);
+  });
+}
+
+// Initialize Tech News
+fetchTechNews();
