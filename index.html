@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Varun Kasyap</title>
@@ -17,21 +18,29 @@
   <div class="section-container">
     <h2>Open Source Contributions:</h2>
 
-    <div class="table-wrapper">
-      <table id="contribTable">
-        <thead>
-          <tr>
-            <th>S.No.</th>
-            <th>Project</th>
-            <th>PR Link</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <div id="pr-container" class="pr-grid">
+      <div class="loading-spinner">Loading contributions...</div>
+    </div>
+  </div>
+
+  <div class="section-container">
+    <h2>Code Playground</h2>
+    <div class="playground-wrapper">
+      <div class="controls">
+        <select id="languageSelect">
+          <option value="" disabled selected>Loading languages...</option>
+        </select>
+        <button id="runBtn">Run Code</button>
+      </div>
+      <textarea id="codeEditor" spellcheck="false" placeholder="// Write your code here..."></textarea>
+      <div id="outputContainer">
+        <h3>Output:</h3>
+        <pre id="output"></pre>
+      </div>
     </div>
   </div>
 
   <script src="script.js"></script>
 </body>
+
 </html>
