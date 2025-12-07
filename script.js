@@ -127,6 +127,24 @@ const languageSelect = document.getElementById("languageSelect");
 const runBtn = document.getElementById("runBtn");
 const codeEditor = document.getElementById("codeEditor");
 const output = document.getElementById("output");
+const lineNumbers = document.getElementById("lineNumbers");
+
+// ----- Line Numbers Logic -----
+function updateLineNumbers() {
+  const code = codeEditor.value;
+  const lines = code.split("\n").length;
+  lineNumbers.innerHTML = Array.from({ length: lines }, (_, i) => `<div>${i + 1}</div>`).join("");
+}
+
+function syncScroll() {
+  lineNumbers.scrollTop = codeEditor.scrollTop;
+}
+
+codeEditor.addEventListener("input", updateLineNumbers);
+codeEditor.addEventListener("scroll", syncScroll);
+
+// Initial update
+updateLineNumbers();
 
 // Piston API endpoints
 const RUNTMES_URL = "https://emkc.org/api/v2/piston/runtimes";
@@ -148,6 +166,7 @@ fetch(RUNTMES_URL)
     } else {
       codeEditor.value = '// Select a language and write code';
     }
+    updateLineNumbers();
   });
 
 function rtimesToOptions(runtimes) {

@@ -41,7 +41,10 @@
         </select>
         <button id="runBtn">Run Code</button>
       </div>
-      <textarea id="codeEditor" spellcheck="false" placeholder="// Write your code here..."></textarea>
+      <div class="editor-container">
+        <div id="lineNumbers"></div>
+        <textarea id="codeEditor" spellcheck="false" placeholder="// Write your code here..."></textarea>
+      </div>
       <div id="outputContainer">
         <h3>Output:</h3>
         <pre id="output"></pre>
