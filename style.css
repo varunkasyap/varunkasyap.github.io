@@ -37,6 +37,26 @@ h1 {
   color: var(--text);
 }
 
+.contact-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.linkedin-icon {
+  width: 24px;
+  height: 24px;
+  fill: var(--text);
+  transition: opacity 0.3s;
+  display: block;
+  /* Removes extra vertical space for inline elements */
+}
+
+.linkedin-icon:hover {
+  opacity: 0.7;
+}
+
 .section-container {
   width: 90%;
   max-width: 800px;
