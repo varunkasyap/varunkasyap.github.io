@@ -3,6 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Varun Kasyap</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -13,9 +14,10 @@
 
   <img src="headshot.jpeg" alt="Varun Kasyap Headshot" class="avatar">
   <h1>Varun Kasyap Pentamaraju</h1>
+  <p class="load-time" id="loadTime" aria-live="polite"></p>
   <div class="contact-info">
     <a href="mailto:varunkasyap@hotmail.com" class="email">varunkasyap@hotmail.com</a>
-    <a href="https://linkedin.com/in/varunkasyap" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
+    <a href="https://linkedin.com/in/varunkasyap" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" class="social-link">
       <svg class="linkedin-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
         <path
           d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
@@ -23,13 +25,14 @@
     </a>
   </div>
 
-  <div class="section-container">
+  <div class="section-container" id="contributions">
     <h2>Open Source Contributions:</h2>
 
     <div id="pr-container" class="pr-grid">
       <div class="loading-spinner">Loading contributions...</div>
     </div>
-    <div id="pagination-controls"></div>
+    <div id="pagination-status" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+    <nav id="pagination-controls" class="pagination" aria-label="Contribution pages" aria-controls="pr-container"></nav>
   </div>
 
   <script src="script.js"></script>
