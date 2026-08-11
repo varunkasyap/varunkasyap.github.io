@@ -234,6 +234,7 @@ h2 {
   z-index: 10;
   background: var(--bg);
   border: 1px solid var(--border);
+  border-radius: 4px;
   padding: 8px 14px;
   min-height: 44px;
   min-width: 44px;
