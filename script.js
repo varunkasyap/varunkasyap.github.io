@@ -69,46 +69,115 @@ const MOBILE_QUERY = window.matchMedia("(max-width: 600px)");
 const ITEMS_PER_PAGE_MOBILE = 3;
 const ITEMS_PER_PAGE_DESKTOP = 6;
 const PR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const PR_CACHE_PREFIX = "pr-cache-v1:";
+const PR_CACHE_KEY = "pr-cache-v2";
 
 let currentPage = 1;
 let itemsPerPage = getItemsPerPage();
 let totalCount = 0;
+let allPRs = null;
+let prsRequest = null;
 
 function getItemsPerPage() {
   return MOBILE_QUERY.matches ? ITEMS_PER_PAGE_MOBILE : ITEMS_PER_PAGE_DESKTOP;
 }
 
-function prCacheKey(page, perPage) {
-  return `${PR_CACHE_PREFIX}${perPage}:${page}`;
-}
-
-function readPrCache(page, perPage, { allowStale = false } = {}) {
+function readPrCache({ allowStale = false } = {}) {
   try {
-    const raw = localStorage.getItem(prCacheKey(page, perPage));
-    if (!raw) return null;
-
-    const entry = JSON.parse(raw);
-    if (!entry || typeof entry.savedAt !== "number" || !entry.data) return null;
+    const entry = JSON.parse(localStorage.getItem(PR_CACHE_KEY) || "null");
+    if (!entry || typeof entry.savedAt !== "number" || !Array.isArray(entry.items)) {
+      return null;
+    }
 
     const isStale = Date.now() - entry.savedAt > PR_CACHE_TTL_MS;
     if (isStale && !allowStale) return null;
 
-    return entry.data;
+    return entry.items;
   } catch {
     return null;
   }
 }
 
-function writePrCache(page, perPage, data) {
+function writePrCache(items) {
   try {
-    localStorage.setItem(prCacheKey(page, perPage), JSON.stringify({
+    Object.keys(localStorage)
+      .filter(key => key.startsWith("pr-cache-v1:"))
+      .forEach(key => localStorage.removeItem(key));
+
+    localStorage.setItem(PR_CACHE_KEY, JSON.stringify({
       savedAt: Date.now(),
-      data
+      items
     }));
   } catch {
     // Ignore quota / private-mode failures
   }
+}
+
+function slimPR(pr) {
+  return {
+    html_url: pr.html_url,
+    repository_url: pr.repository_url,
+    state: pr.state,
+    pull_request: pr.pull_request ? { merged_at: pr.pull_request.merged_at } : null,
+    title: pr.title,
+    number: pr.number,
+    closed_at: pr.closed_at
+  };
+}
+
+function isRateLimited(response, data) {
+  return response.status === 403 || response.status === 429
+    || /rate limit/i.test((data && data.message) || "");
+}
+
+function fetchAllPRsFromApi() {
+  const perPage = 100;
+
+  function fetchPage(page, collected) {
+    return fetch(`${BASE_API_URL}&page=${page}&per_page=${perPage}`)
+      .then(response => response.json().then(data => ({ response, data })))
+      .then(({ response, data }) => {
+        if (isRateLimited(response, data)) {
+          const error = new Error("RATE_LIMIT");
+          error.stale = readPrCache({ allowStale: true });
+          throw error;
+        }
+
+        const batch = (data.items || []).map(slimPR);
+        const next = collected.concat(batch);
+        const total = data.total_count || next.length;
+
+        if (batch.length < perPage || next.length >= total || page >= 10) {
+          return next;
+        }
+
+        return fetchPage(page + 1, next);
+      });
+  }
+
+  return fetchPage(1, []);
+}
+
+function loadAllPRs() {
+  if (allPRs) return Promise.resolve(allPRs);
+  if (prsRequest) return prsRequest;
+
+  const cached = readPrCache();
+  if (cached) {
+    allPRs = cached;
+    return Promise.resolve(allPRs);
+  }
+
+  prsRequest = fetchAllPRsFromApi()
+    .then(items => {
+      allPRs = items;
+      writePrCache(items);
+      return allPRs;
+    })
+    .finally(() => {
+      prsRequest = null;
+    });
+
+  return prsRequest;
 }
 
 function scrollToContributions() {
@@ -119,12 +188,15 @@ function scrollToContributions() {
   });
 }
 
-function showPRResults(data, container) {
+function showPRResults(items, container) {
   container.innerHTML = ""; // Clear loading
+  totalCount = items.length;
 
-  if (data.items && data.items.length > 0) {
-    totalCount = data.total_count;
-    renderPRs(data.items, container);
+  const start = (currentPage - 1) * itemsPerPage;
+  const pageItems = items.slice(start, start + itemsPerPage);
+
+  if (pageItems.length > 0) {
+    renderPRs(pageItems, container);
     renderPagination(totalCount, itemsPerPage, currentPage);
   } else {
     container.innerHTML = "<p>No contributions found.</p>";
@@ -137,10 +209,17 @@ function fetchPRs(page, { scroll = false } = {}) {
 
   currentPage = page;
   const container = document.getElementById("pr-container");
-  const cached = readPrCache(page, itemsPerPage);
 
+  if (allPRs) {
+    showPRResults(allPRs, container);
+    if (scroll) scrollToContributions();
+    return;
+  }
+
+  const cached = readPrCache();
   if (cached) {
-    showPRResults(cached, container);
+    allPRs = cached;
+    showPRResults(allPRs, container);
     if (scroll) scrollToContributions();
     return;
   }
@@ -148,38 +227,25 @@ function fetchPRs(page, { scroll = false } = {}) {
   container.innerHTML = '<div class="loading-spinner">Loading contributions...</div>';
   document.getElementById("pagination-controls").innerHTML = ""; // Hide controls while loading
 
-  fetch(`${BASE_API_URL}&page=${page}&per_page=${itemsPerPage}`)
-    .then(response => response.json().then(data => ({ response, data })))
-    .then(({ response, data }) => {
-      const rateLimited = response.status === 403 || response.status === 429
-        || /rate limit/i.test(data.message || "");
-
-      if (rateLimited) {
-        const stale = readPrCache(page, itemsPerPage, { allowStale: true });
-        if (stale) {
-          showPRResults(stale, container);
-        } else {
-          container.innerHTML = "<p>Limit exceeded. Try again later.</p>";
-        }
-        if (scroll) scrollToContributions();
-        return;
-      }
-
-      if (data.items) {
-        writePrCache(page, itemsPerPage, data);
-      }
-
-      showPRResults(data, container);
+  loadAllPRs()
+    .then(items => {
+      showPRResults(items, container);
       if (scroll) scrollToContributions();
     })
     .catch(error => {
       console.error("Error loading GitHub data:", error);
-      const stale = readPrCache(page, itemsPerPage, { allowStale: true });
+
+      const stale = (error && error.stale) || readPrCache({ allowStale: true });
       if (stale) {
+        allPRs = stale;
         showPRResults(stale, container);
+      } else if (error && error.message === "RATE_LIMIT") {
+        container.innerHTML = "<p>Limit exceeded. Try again later.</p>";
       } else {
         container.innerHTML = "<p>Error loading contributions. Please check console.</p>";
       }
+
+      if (scroll) scrollToContributions();
     });
 }
 
