@@ -55,6 +55,8 @@ const BASE_API_URL = "https://api.github.com/search/issues?q=is:pr+is:merged+aut
 const MOBILE_QUERY = window.matchMedia("(max-width: 600px)");
 const ITEMS_PER_PAGE_MOBILE = 3;
 const ITEMS_PER_PAGE_DESKTOP = 6;
+const PR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const PR_CACHE_PREFIX = "pr-cache-v1:";
 
 let currentPage = 1;
 let itemsPerPage = getItemsPerPage();
@@ -64,46 +66,107 @@ function getItemsPerPage() {
   return MOBILE_QUERY.matches ? ITEMS_PER_PAGE_MOBILE : ITEMS_PER_PAGE_DESKTOP;
 }
 
+function prCacheKey(page, perPage) {
+  return `${PR_CACHE_PREFIX}${perPage}:${page}`;
+}
+
+function readPrCache(page, perPage, { allowStale = false } = {}) {
+  try {
+    const raw = localStorage.getItem(prCacheKey(page, perPage));
+    if (!raw) return null;
+
+    const entry = JSON.parse(raw);
+    if (!entry || typeof entry.savedAt !== "number" || !entry.data) return null;
+
+    const isStale = Date.now() - entry.savedAt > PR_CACHE_TTL_MS;
+    if (isStale && !allowStale) return null;
+
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+function writePrCache(page, perPage, data) {
+  try {
+    localStorage.setItem(prCacheKey(page, perPage), JSON.stringify({
+      savedAt: Date.now(),
+      data
+    }));
+  } catch {
+    // Ignore quota / private-mode failures
+  }
+}
+
+function scrollToContributions() {
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById("contributions")?.scrollIntoView({
+    behavior: prefersReducedMotion ? "auto" : "smooth",
+    block: "start"
+  });
+}
+
+function showPRResults(data, container) {
+  container.innerHTML = ""; // Clear loading
+
+  if (data.items && data.items.length > 0) {
+    totalCount = data.total_count;
+    renderPRs(data.items, container);
+    renderPagination(totalCount, itemsPerPage, currentPage);
+  } else {
+    container.innerHTML = "<p>No contributions found.</p>";
+    document.getElementById("pagination-controls").innerHTML = "";
+  }
+}
+
 function fetchPRs(page, { scroll = false } = {}) {
   if (page < 1) return;
 
   currentPage = page;
   const container = document.getElementById("pr-container");
+  const cached = readPrCache(page, itemsPerPage);
+
+  if (cached) {
+    showPRResults(cached, container);
+    if (scroll) scrollToContributions();
+    return;
+  }
+
   container.innerHTML = '<div class="loading-spinner">Loading contributions...</div>';
   document.getElementById("pagination-controls").innerHTML = ""; // Hide controls while loading
 
   fetch(`${BASE_API_URL}&page=${page}&per_page=${itemsPerPage}`)
     .then(response => response.json().then(data => ({ response, data })))
     .then(({ response, data }) => {
-      container.innerHTML = ""; // Clear loading
-
       const rateLimited = response.status === 403 || response.status === 429
         || /rate limit/i.test(data.message || "");
 
       if (rateLimited) {
-        container.innerHTML = "<p>Limit exceeded. Try again later.</p>";
+        const stale = readPrCache(page, itemsPerPage, { allowStale: true });
+        if (stale) {
+          showPRResults(stale, container);
+        } else {
+          container.innerHTML = "<p>Limit exceeded. Try again later.</p>";
+        }
+        if (scroll) scrollToContributions();
         return;
       }
 
-      if (data.items && data.items.length > 0) {
-        totalCount = data.total_count;
-        renderPRs(data.items, container);
-        renderPagination(totalCount, itemsPerPage, currentPage);
-      } else {
-        container.innerHTML = "<p>No contributions found.</p>";
+      if (data.items) {
+        writePrCache(page, itemsPerPage, data);
       }
 
-      if (scroll) {
-        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        document.getElementById("contributions")?.scrollIntoView({
-          behavior: prefersReducedMotion ? "auto" : "smooth",
-          block: "start"
-        });
-      }
+      showPRResults(data, container);
+      if (scroll) scrollToContributions();
     })
     .catch(error => {
       console.error("Error loading GitHub data:", error);
-      container.innerHTML = "<p>Error loading contributions. Please check console.</p>";
+      const stale = readPrCache(page, itemsPerPage, { allowStale: true });
+      if (stale) {
+        showPRResults(stale, container);
+      } else {
+        container.innerHTML = "<p>Error loading contributions. Please check console.</p>";
+      }
     });
 }
 
