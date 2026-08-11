@@ -77,6 +77,15 @@
     return normalizeTheme(theme) === "dark" ? "Light Mode" : "Dark Mode";
   }
 
+  function resolveInitialTheme(stored, prefersDark) {
+    if (stored === "dark" || stored === "light") return stored;
+    return prefersDark ? "dark" : "light";
+  }
+
+  function themeColorFor(theme) {
+    return normalizeTheme(theme) === "dark" ? "#000000" : "#ffffff";
+  }
+
   function createPrCache({
     storage,
     now = () => Date.now(),
@@ -145,6 +154,8 @@
     normalizeTheme,
     nextTheme,
     themeButtonLabel,
+    resolveInitialTheme,
+    themeColorFor,
     createPrCache
   };
 });

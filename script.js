@@ -5,6 +5,8 @@ const {
   itemsPerPageFor,
   nextTheme,
   normalizeTheme,
+  resolveInitialTheme,
+  themeColorFor,
   pageAfterViewportChange,
   pageSlice,
   prStatus,
@@ -59,11 +61,17 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-function applyTheme(theme) {
+function applyTheme(theme, { persist = true } = {}) {
   const next = normalizeTheme(theme);
   document.documentElement.setAttribute("data-theme", next);
   document.body.setAttribute("data-theme", next);
   toggleBtn.textContent = themeButtonLabel(next);
+
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) themeColor.setAttribute("content", themeColorFor(next));
+
+  if (!persist) return;
+
   try {
     localStorage.setItem("theme", next);
   } catch {
@@ -71,7 +79,17 @@ function applyTheme(theme) {
   }
 }
 
-applyTheme(localStorage.getItem("theme") || "light");
+const storedTheme = (() => {
+  try {
+    return localStorage.getItem("theme");
+  } catch {
+    return null;
+  }
+})();
+const hasStoredTheme = storedTheme === "dark" || storedTheme === "light";
+const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+applyTheme(resolveInitialTheme(storedTheme, prefersDark), { persist: hasStoredTheme });
 
 toggleBtn.addEventListener("click", () => {
   applyTheme(nextTheme(document.documentElement.getAttribute("data-theme")));

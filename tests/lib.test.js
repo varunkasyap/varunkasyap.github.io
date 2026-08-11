@@ -10,6 +10,8 @@ const {
   itemsPerPageFor,
   nextTheme,
   normalizeTheme,
+  resolveInitialTheme,
+  themeColorFor,
   pageAfterViewportChange,
   pageSlice,
   prStatus,
@@ -147,6 +149,20 @@ describe("theme helpers", () => {
     assert.equal(nextTheme("light"), "dark");
     assert.equal(themeButtonLabel("dark"), "Light Mode");
     assert.equal(themeButtonLabel("light"), "Dark Mode");
+  });
+
+  it("uses a stored theme, otherwise the OS preference", () => {
+    assert.equal(resolveInitialTheme("dark", false), "dark");
+    assert.equal(resolveInitialTheme("light", true), "light");
+    assert.equal(resolveInitialTheme(null, true), "dark");
+    assert.equal(resolveInitialTheme(null, false), "light");
+    assert.equal(resolveInitialTheme("nope", true), "dark");
+  });
+
+  it("maps themes to browser chrome colors", () => {
+    assert.equal(themeColorFor("dark"), "#000000");
+    assert.equal(themeColorFor("light"), "#ffffff");
+    assert.equal(themeColorFor(null), "#ffffff");
   });
 });
 
