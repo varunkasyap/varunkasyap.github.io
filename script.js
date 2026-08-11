@@ -67,9 +67,17 @@ function fetchPRs(page, { scroll = false } = {}) {
   document.getElementById("pagination-controls").innerHTML = ""; // Hide controls while loading
 
   fetch(`${BASE_API_URL}&page=${page}&per_page=${itemsPerPage}`)
-    .then(response => response.json())
-    .then(data => {
+    .then(response => response.json().then(data => ({ response, data })))
+    .then(({ response, data }) => {
       container.innerHTML = ""; // Clear loading
+
+      const rateLimited = response.status === 403 || response.status === 429
+        || /rate limit/i.test(data.message || "");
+
+      if (rateLimited) {
+        container.innerHTML = "<p>Limit exceeded. Try again later.</p>";
+        return;
+      }
 
       if (data.items && data.items.length > 0) {
         totalCount = data.total_count;
