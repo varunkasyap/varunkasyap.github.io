@@ -36,6 +36,12 @@ if (document.readyState === "complete") {
   window.addEventListener("load", renderLoadTime, { once: true });
 }
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+
 toggleBtn.addEventListener("click", () => {
   const isDark = document.body.getAttribute("data-theme") === "dark";
   document.body.setAttribute("data-theme", isDark ? "light" : "dark");
