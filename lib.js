@@ -1,10 +1,6 @@
 (function (root, factory) {
   const api = factory();
-  if (typeof module === "object" && module.exports) {
-    module.exports = api;
-  } else {
-    root.PortfolioLib = api;
-  }
+  api.exportLib(root, api, typeof module === "object" ? module : null);
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   const PR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   const PR_CACHE_KEY = "pr-cache-v2";
@@ -86,6 +82,14 @@
     return normalizeTheme(theme) === "dark" ? "#000000" : "#ffffff";
   }
 
+  function exportLib(root, api, cjsModule) {
+    if (cjsModule && cjsModule.exports) {
+      cjsModule.exports = api;
+    } else {
+      root.PortfolioLib = api;
+    }
+  }
+
   function createPrCache({
     storage,
     now = () => Date.now(),
@@ -156,6 +160,7 @@
     themeButtonLabel,
     resolveInitialTheme,
     themeColorFor,
+    exportLib,
     createPrCache
   };
 });

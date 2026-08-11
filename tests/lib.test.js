@@ -1,11 +1,15 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
 const {
   ITEMS_PER_PAGE_DESKTOP,
   ITEMS_PER_PAGE_MOBILE,
   PR_CACHE_KEY,
   PR_CACHE_TTL_MS,
   createPrCache,
+  exportLib,
   isRateLimited,
   itemsPerPageFor,
   nextTheme,
@@ -84,6 +88,8 @@ describe("isRateLimited", () => {
     assert.equal(isRateLimited({ status: 429 }, {}), true);
     assert.equal(isRateLimited({ status: 200 }, { message: "API rate limit exceeded" }), true);
     assert.equal(isRateLimited({ status: 200 }, { items: [] }), false);
+    assert.equal(isRateLimited({ status: 200 }, undefined), false);
+    assert.equal(isRateLimited({ status: 200 }, null), false);
   });
 });
 
@@ -101,6 +107,7 @@ describe("visiblePageNumbers", () => {
     assert.deepEqual(visiblePageNumbers(1, 1), [1]);
     assert.deepEqual(visiblePageNumbers(5, 10), [1, 4, 5, 6, 10]);
     assert.deepEqual(visiblePageNumbers(1, 10), [1, 2, 10]);
+    assert.deepEqual(visiblePageNumbers(10, 10), [1, 9, 10]);
   });
 });
 
@@ -126,6 +133,8 @@ describe("repoNameFromUrl and prStatus", () => {
       repoNameFromUrl("https://api.github.com/repos/django/django"),
       "django/django"
     );
+    assert.equal(repoNameFromUrl(undefined), "");
+    assert.equal(repoNameFromUrl(""), "");
   });
 
   it("labels merged closed PRs as Merged", () => {
@@ -134,6 +143,8 @@ describe("repoNameFromUrl and prStatus", () => {
       pull_request: { merged_at: "2026-01-01T00:00:00Z" }
     }), "Merged");
     assert.equal(prStatus({ state: "open", pull_request: {} }), "open");
+    assert.equal(prStatus({ state: "closed", pull_request: {} }), "closed");
+    assert.equal(prStatus({ state: "closed" }), "closed");
   });
 });
 
@@ -176,6 +187,18 @@ describe("createPrCache", () => {
     });
     assert.equal(invalid.read(), null);
 
+    assert.equal(createPrCache({
+      storage: createMemoryStorage({ [PR_CACHE_KEY]: JSON.stringify({ savedAt: "nope", items: [] }) })
+    }).read(), null);
+
+    assert.equal(createPrCache({
+      storage: createMemoryStorage({ [PR_CACHE_KEY]: JSON.stringify({ savedAt: 1, items: "nope" }) })
+    }).read(), null);
+
+    assert.equal(createPrCache({
+      storage: createMemoryStorage({ [PR_CACHE_KEY]: "null" })
+    }).read(), null);
+
     const storage = createMemoryStorage();
     const writer = createPrCache({ storage, now: () => 1_000 });
     writer.write([{ number: 1 }]);
@@ -196,4 +219,46 @@ describe("createPrCache", () => {
     assert.deepEqual(cache.read(), [{ number: 7 }]);
     assert.equal(JSON.parse(storage.getItem(PR_CACHE_KEY)).savedAt, 42);
   });
+
+  it("uses the default clock for a fresh write", () => {
+    const storage = createMemoryStorage();
+    const cache = createPrCache({ storage });
+    cache.write([{ number: 3 }]);
+    assert.deepEqual(cache.read(), [{ number: 3 }]);
+  });
+
+  it("ignores write failures and skips empty storage keys", () => {
+    const storage = createMemoryStorage({ "pr-cache-v1:6:1": "old" });
+    const originalKey = storage.key.bind(storage);
+    storage.key = index => (index === 0 ? "" : originalKey(index));
+    storage.setItem = () => {
+      throw new Error("quota");
+    };
+
+    const cache = createPrCache({ storage, now: () => 1 });
+    assert.doesNotThrow(() => cache.write([{ number: 9 }]));
+    assert.equal(cache.read(), null);
+  });
 });
+
+describe("browser export", () => {
+  it("assigns module.exports in Node and PortfolioLib in the browser", () => {
+    const cjsModule = { exports: {} };
+    exportLib({}, { ok: true }, cjsModule);
+    assert.deepEqual(cjsModule.exports, { ok: true });
+
+    const root = {};
+    exportLib(root, { ok: true }, null);
+    assert.deepEqual(root.PortfolioLib, { ok: true });
+  });
+
+  it("attaches PortfolioLib when module.exports is unavailable", () => {
+    const source = fs.readFileSync(path.join(__dirname, "..", "lib.js"), "utf8");
+    const sandbox = { globalThis: {} };
+    vm.runInNewContext(source, sandbox);
+    assert.equal(typeof sandbox.globalThis.PortfolioLib.slimPR, "function");
+    assert.equal(sandbox.globalThis.PortfolioLib.normalizeTheme("dark"), "dark");
+  });
+});
+
+
