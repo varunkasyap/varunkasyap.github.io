@@ -1,0 +1,7 @@
+{
+  "name": "varunkasyap.github.io",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

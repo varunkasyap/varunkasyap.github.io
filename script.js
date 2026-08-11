@@ -1,3 +1,20 @@
+const {
+  PR_FETCH_PER_PAGE,
+  createPrCache,
+  isRateLimited,
+  itemsPerPageFor,
+  nextTheme,
+  normalizeTheme,
+  pageAfterViewportChange,
+  pageSlice,
+  prStatus,
+  repoNameFromUrl,
+  shouldFetchNextPage,
+  slimPR,
+  themeButtonLabel,
+  visiblePageNumbers
+} = globalThis.PortfolioLib;
+
 // ----- Dark Mode Toggle -----
 const toggleBtn = document.getElementById("themeToggle");
 
@@ -43,10 +60,10 @@ if ("serviceWorker" in navigator) {
 }
 
 function applyTheme(theme) {
-  const next = theme === "dark" ? "dark" : "light";
+  const next = normalizeTheme(theme);
   document.documentElement.setAttribute("data-theme", next);
   document.body.setAttribute("data-theme", next);
-  toggleBtn.textContent = next === "dark" ? "Light Mode" : "Dark Mode";
+  toggleBtn.textContent = themeButtonLabel(next);
   try {
     localStorage.setItem("theme", next);
   } catch {
@@ -57,8 +74,7 @@ function applyTheme(theme) {
 applyTheme(localStorage.getItem("theme") || "light");
 
 toggleBtn.addEventListener("click", () => {
-  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-  applyTheme(isDark ? "light" : "dark");
+  applyTheme(nextTheme(document.documentElement.getAttribute("data-theme")));
 });
 
 // ----- Load Contributions from JSON -----
@@ -66,10 +82,7 @@ toggleBtn.addEventListener("click", () => {
 // ----- Load Contributions from GitHub API -----
 const BASE_API_URL = "https://api.github.com/search/issues?q=is:pr+is:merged+author:varunkasyap";
 const MOBILE_QUERY = window.matchMedia("(max-width: 600px)");
-const ITEMS_PER_PAGE_MOBILE = 3;
-const ITEMS_PER_PAGE_DESKTOP = 6;
-const PR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const PR_CACHE_KEY = "pr-cache-v2";
+const prCache = createPrCache({ storage: localStorage });
 
 let currentPage = 1;
 let itemsPerPage = getItemsPerPage();
@@ -78,62 +91,20 @@ let allPRs = null;
 let prsRequest = null;
 
 function getItemsPerPage() {
-  return MOBILE_QUERY.matches ? ITEMS_PER_PAGE_MOBILE : ITEMS_PER_PAGE_DESKTOP;
+  return itemsPerPageFor(MOBILE_QUERY.matches);
 }
 
-function readPrCache({ allowStale = false } = {}) {
-  try {
-    const entry = JSON.parse(localStorage.getItem(PR_CACHE_KEY) || "null");
-    if (!entry || typeof entry.savedAt !== "number" || !Array.isArray(entry.items)) {
-      return null;
-    }
-
-    const isStale = Date.now() - entry.savedAt > PR_CACHE_TTL_MS;
-    if (isStale && !allowStale) return null;
-
-    return entry.items;
-  } catch {
-    return null;
-  }
+function readPrCache(options) {
+  return prCache.read(options);
 }
 
 function writePrCache(items) {
-  try {
-    Object.keys(localStorage)
-      .filter(key => key.startsWith("pr-cache-v1:"))
-      .forEach(key => localStorage.removeItem(key));
-
-    localStorage.setItem(PR_CACHE_KEY, JSON.stringify({
-      savedAt: Date.now(),
-      items
-    }));
-  } catch {
-    // Ignore quota / private-mode failures
-  }
-}
-
-function slimPR(pr) {
-  return {
-    html_url: pr.html_url,
-    repository_url: pr.repository_url,
-    state: pr.state,
-    pull_request: pr.pull_request ? { merged_at: pr.pull_request.merged_at } : null,
-    title: pr.title,
-    number: pr.number,
-    closed_at: pr.closed_at
-  };
-}
-
-function isRateLimited(response, data) {
-  return response.status === 403 || response.status === 429
-    || /rate limit/i.test((data && data.message) || "");
+  prCache.write(items);
 }
 
 function fetchAllPRsFromApi() {
-  const perPage = 100;
-
   function fetchPage(page, collected) {
-    return fetch(`${BASE_API_URL}&page=${page}&per_page=${perPage}`)
+    return fetch(`${BASE_API_URL}&page=${page}&per_page=${PR_FETCH_PER_PAGE}`)
       .then(response => response.json().then(data => ({ response, data })))
       .then(({ response, data }) => {
         if (isRateLimited(response, data)) {
@@ -146,7 +117,7 @@ function fetchAllPRsFromApi() {
         const next = collected.concat(batch);
         const total = data.total_count || next.length;
 
-        if (batch.length < perPage || next.length >= total || page >= 10) {
+        if (!shouldFetchNextPage(batch.length, next.length, total, page)) {
           return next;
         }
 
@@ -192,8 +163,7 @@ function showPRResults(items, container) {
   container.innerHTML = ""; // Clear loading
   totalCount = items.length;
 
-  const start = (currentPage - 1) * itemsPerPage;
-  const pageItems = items.slice(start, start + itemsPerPage);
+  const pageItems = pageSlice(items, currentPage, itemsPerPage);
 
   if (pageItems.length > 0) {
     renderPRs(pageItems, container);
@@ -257,13 +227,13 @@ function renderPRs(items, container) {
     card.target = "_blank";
 
     // Extract repo name from URL (api url is like .../repos/owner/repo/...)
-    const repoName = pr.repository_url.split("/").slice(-2).join("/");
+    const repoName = repoNameFromUrl(pr.repository_url);
     const date = new Date(pr.closed_at).toLocaleDateString();
 
     card.innerHTML = `
       <div class="pr-header">
         <span class="pr-repo">${repoName}</span>
-        <span class="pr-status ${pr.state}">${pr.state === 'closed' && pr.pull_request.merged_at ? 'Merged' : pr.state}</span>
+        <span class="pr-status ${pr.state}">${prStatus(pr)}</span>
       </div>
       <h3 class="pr-title">${pr.title}</h3>
       <div class="pr-meta">
@@ -349,10 +319,7 @@ function renderPagination(totalItems, perPage, current) {
     extraClass: "pagination-btn--prev"
   }));
 
-  const pagesToShow = new Set([1, totalPages, current, current - 1, current + 1]);
-  const sortedPages = Array.from(pagesToShow)
-    .filter(p => p > 0 && p <= totalPages)
-    .sort((a, b) => a - b);
+  const sortedPages = visiblePageNumbers(current, totalPages);
 
   let lastRendered = 0;
   sortedPages.forEach(p => {
@@ -399,9 +366,9 @@ function handleViewportChange() {
   if (nextSize === itemsPerPage) return;
 
   // Keep the first item of the current page in view after the page size changes
-  const firstItemIndex = (currentPage - 1) * itemsPerPage;
+  const nextPage = pageAfterViewportChange(currentPage, itemsPerPage, nextSize);
   itemsPerPage = nextSize;
-  fetchPRs(Math.floor(firstItemIndex / itemsPerPage) + 1);
+  fetchPRs(nextPage);
 }
 
 if (typeof MOBILE_QUERY.addEventListener === "function") {
