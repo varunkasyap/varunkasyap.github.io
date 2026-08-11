@@ -107,6 +107,16 @@ h2 {
   opacity: 1;
 }
 
+.load-note {
+  margin: 2px 0 0;
+  padding: 0 8px;
+  max-width: 28rem;
+  text-align: center;
+  font-size: clamp(0.75rem, 2.6vw, 0.85rem);
+  line-height: 1.3;
+  opacity: 0.55;
+}
+
 .email {
   font-size: clamp(0.95rem, 3.6vw, 1.125rem);
   text-decoration: none;
