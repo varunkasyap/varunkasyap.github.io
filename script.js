@@ -42,10 +42,23 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+function applyTheme(theme) {
+  const next = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", next);
+  document.body.setAttribute("data-theme", next);
+  toggleBtn.textContent = next === "dark" ? "Light Mode" : "Dark Mode";
+  try {
+    localStorage.setItem("theme", next);
+  } catch {
+    // Ignore quota / private-mode failures
+  }
+}
+
+applyTheme(localStorage.getItem("theme") || "light");
+
 toggleBtn.addEventListener("click", () => {
-  const isDark = document.body.getAttribute("data-theme") === "dark";
-  document.body.setAttribute("data-theme", isDark ? "light" : "dark");
-  toggleBtn.textContent = isDark ? "Dark Mode" : "Light Mode";
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  applyTheme(isDark ? "light" : "dark");
 });
 
 // ----- Load Contributions from JSON -----
